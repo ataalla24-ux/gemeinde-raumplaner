@@ -15,6 +15,8 @@ const blockedSlotsList = document.getElementById("blocked-slots");
 const calendarLegend = document.getElementById("calendar-legend");
 const pastorSummary = document.getElementById("pastor-summary");
 const pastorCodeInput = document.getElementById("pastor-code");
+const pastorCodeHint = document.getElementById("pastor-code-hint");
+const pastorSearchInput = document.getElementById("pastor-search");
 const loadApprovalsButton = document.getElementById("load-approvals");
 const refreshApprovalsButton = document.getElementById("refresh-approvals");
 const previousWeekButton = document.getElementById("previous-week");
@@ -34,7 +36,8 @@ const state = {
   currentDate: getInitialDate(),
   calendarView: getInitialView(),
   publicMode: new URLSearchParams(window.location.search).get("public") === "1",
-  settings: {}
+  settings: {},
+  pastorFilter: ""
 };
 
 bootstrap().catch((error) => {
@@ -57,6 +60,9 @@ async function loadMeta() {
 
   state.settings = data.settings || {};
   state.blockedSlots = data.blockedSlots || [];
+  pastorCodeHint.innerHTML = state.settings.usingDefaultPastorCode
+    ? `Standardcode aktuell: <code>gemeinde123</code>. In Vercel besser durch einen eigenen Pastor-Code ersetzen.`
+    : "Pastor-Code aus der Server-Konfiguration verwenden.";
   state.roomMap.clear();
   (data.rooms || []).forEach((room) => {
     state.roomMap.set(room.id, room);
@@ -160,6 +166,10 @@ bookingForm.addEventListener("submit", async (event) => {
 
 loadApprovalsButton.addEventListener("click", loadPastorBookings);
 refreshApprovalsButton.addEventListener("click", refreshPastorData);
+pastorSearchInput.addEventListener("input", () => {
+  state.pastorFilter = pastorSearchInput.value.trim().toLowerCase();
+  renderPastorArea();
+});
 roomSelect.addEventListener("change", renderRoomDetails);
 weekViewButton.addEventListener("click", () => setCalendarView("week"));
 monthViewButton.addEventListener("click", () => setCalendarView("month"));
@@ -360,8 +370,9 @@ function renderScheduleCards() {
 }
 
 function renderPastorArea() {
-  const pending = state.pastorBookings.filter((booking) => booking.status === "pending");
-  const history = state.pastorBookings
+  const filteredBookings = state.pastorBookings.filter(matchesPastorFilter);
+  const pending = filteredBookings.filter((booking) => booking.status === "pending");
+  const history = filteredBookings
     .filter((booking) => booking.status !== "pending")
     .sort((a, b) => new Date(b.decidedAt || b.createdAt) - new Date(a.decidedAt || a.createdAt));
 
@@ -496,18 +507,25 @@ function bindPastorActions(container) {
 
 async function runPastorAction(url, code, action) {
   try {
+    const note = getActionNote(action);
+    if (note === null) {
+      return;
+    }
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
+        "Content-Type": "application/json",
         "x-pastor-code": code
-      }
+      },
+      body: JSON.stringify({ note })
     });
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || "Aktion konnte nicht durchgeführt werden.");
     }
 
-    applyPastorActionLocally(url, action);
+    applyPastorActionLocally(url, action, note);
     renderPastorArea();
     showMessage(
       approvalMessage,
@@ -520,7 +538,7 @@ async function runPastorAction(url, code, action) {
   }
 }
 
-function applyPastorActionLocally(url, action) {
+function applyPastorActionLocally(url, action, note) {
   const targetStatus = pastorTargetStatus(action);
   const decidedAt = new Date().toISOString();
   const detail =
@@ -540,7 +558,7 @@ function applyPastorActionLocally(url, action) {
     const isMatch =
       type === "bookings" ? booking.id === targetId : booking.recurrenceGroupId === targetId;
 
-    if (!isMatch || booking.status !== "pending") {
+    if (!isMatch) {
       return booking;
     }
 
@@ -548,7 +566,7 @@ function applyPastorActionLocally(url, action) {
     history.push({
       createdAt: decidedAt,
       actor: "Pastor",
-      detail
+      detail: note ? `${detail}: ${note}` : detail
     });
 
     return {
@@ -582,6 +600,41 @@ function pastorActionMessage(action) {
   }
 
   return "Anfrage wurde wieder auf offen gesetzt.";
+}
+
+function getActionNote(action) {
+  if (action === "approve") {
+    return "";
+  }
+
+  const promptLabel =
+    action === "reject"
+      ? "Optionaler Grund fuer die Ablehnung:"
+      : "Optionaler Hinweis fuer die Wiedereroeffnung:";
+  const value = window.prompt(promptLabel, "");
+  if (value === null) {
+    return null;
+  }
+  return value.trim();
+}
+
+function matchesPastorFilter(booking) {
+  if (!state.pastorFilter) {
+    return true;
+  }
+
+  const roomName = state.roomMap.get(booking.roomId)?.name || booking.roomId;
+  const haystack = [
+    booking.requestedBy,
+    booking.email,
+    booking.purpose,
+    roomName,
+    formatDate(booking.startAt)
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(state.pastorFilter);
 }
 
 function formatDate(value) {

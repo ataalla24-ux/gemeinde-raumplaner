@@ -215,7 +215,8 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && /^\/api\/bookings\/[^/]+\/approve$/.test(url.pathname)) {
     assertPastorAccess(req, true);
     const bookingId = url.pathname.split("/")[3];
-    const result = await decideBookings({ bookingId, action: "approve" });
+    const body = await parseJsonBody(req);
+    const result = await decideBookings({ bookingId, action: "approve", note: normalizeDecisionNote(body.note) });
     sendJson(res, 200, result);
     return;
   }
@@ -223,7 +224,8 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && /^\/api\/bookings\/[^/]+\/reject$/.test(url.pathname)) {
     assertPastorAccess(req, true);
     const bookingId = url.pathname.split("/")[3];
-    const result = await decideBookings({ bookingId, action: "reject" });
+    const body = await parseJsonBody(req);
+    const result = await decideBookings({ bookingId, action: "reject", note: normalizeDecisionNote(body.note) });
     sendJson(res, 200, result);
     return;
   }
@@ -231,7 +233,8 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && /^\/api\/bookings\/[^/]+\/reopen$/.test(url.pathname)) {
     assertPastorAccess(req, true);
     const bookingId = url.pathname.split("/")[3];
-    const result = await decideBookings({ bookingId, action: "reopen" });
+    const body = await parseJsonBody(req);
+    const result = await decideBookings({ bookingId, action: "reopen", note: normalizeDecisionNote(body.note) });
     sendJson(res, 200, result);
     return;
   }
@@ -239,7 +242,12 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && /^\/api\/series\/[^/]+\/approve$/.test(url.pathname)) {
     assertPastorAccess(req, true);
     const recurrenceGroupId = url.pathname.split("/")[3];
-    const result = await decideBookings({ recurrenceGroupId, action: "approve" });
+    const body = await parseJsonBody(req);
+    const result = await decideBookings({
+      recurrenceGroupId,
+      action: "approve",
+      note: normalizeDecisionNote(body.note)
+    });
     sendJson(res, 200, result);
     return;
   }
@@ -247,7 +255,12 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && /^\/api\/series\/[^/]+\/reject$/.test(url.pathname)) {
     assertPastorAccess(req, true);
     const recurrenceGroupId = url.pathname.split("/")[3];
-    const result = await decideBookings({ recurrenceGroupId, action: "reject" });
+    const body = await parseJsonBody(req);
+    const result = await decideBookings({
+      recurrenceGroupId,
+      action: "reject",
+      note: normalizeDecisionNote(body.note)
+    });
     sendJson(res, 200, result);
     return;
   }
@@ -255,7 +268,12 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && /^\/api\/series\/[^/]+\/reopen$/.test(url.pathname)) {
     assertPastorAccess(req, true);
     const recurrenceGroupId = url.pathname.split("/")[3];
-    const result = await decideBookings({ recurrenceGroupId, action: "reopen" });
+    const body = await parseJsonBody(req);
+    const result = await decideBookings({
+      recurrenceGroupId,
+      action: "reopen",
+      note: normalizeDecisionNote(body.note)
+    });
     sendJson(res, 200, result);
     return;
   }
@@ -565,7 +583,8 @@ function buildPublicMeta() {
     settings: {
       recurrenceTypes: ["none", "weekly", "monthly"],
       emailConfigured: Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS),
-      pastorEmail: PASTOR_EMAIL
+      pastorEmail: PASTOR_EMAIL,
+      usingDefaultPastorCode: PASTOR_CODE === "gemeinde123"
     }
   };
 }
@@ -576,7 +595,7 @@ function assertPastorAccess(req, required) {
   }
 }
 
-async function decideBookings({ bookingId, recurrenceGroupId, action }) {
+async function decideBookings({ bookingId, recurrenceGroupId, action, note }) {
   const bookings = await storage.listBookings();
   const targetBookings = recurrenceGroupId
     ? bookings.filter((entry) => entry.recurrenceGroupId === recurrenceGroupId)
@@ -602,7 +621,7 @@ async function decideBookings({ bookingId, recurrenceGroupId, action }) {
     entry.history.push(
       createHistoryEntry(action, {
         actor: "Pastor",
-        detail: actionDetail(action)
+        detail: actionDetail(action, note)
       })
     );
   });
@@ -666,7 +685,8 @@ async function notifyRequester(booking, action) {
       : action === "reject"
         ? `Ihre Anfrage für ${getRoomName(booking.roomId)} wurde abgelehnt.`
         : `Ihre Anfrage für ${getRoomName(booking.roomId)} wurde wieder auf offen gesetzt und wird erneut geprüft.`,
-    `Termin: ${new Date(booking.startAt).toLocaleString("de-AT")} bis ${new Date(booking.endAt).toLocaleString("de-AT")}`
+    `Termin: ${new Date(booking.startAt).toLocaleString("de-AT")} bis ${new Date(booking.endAt).toLocaleString("de-AT")}`,
+    latestPastorNote(booking)
   ].join("\n");
 
   await sendNotification({
@@ -721,16 +741,32 @@ function mapStatusFromAction(action) {
   return "pending";
 }
 
-function actionDetail(action) {
-  if (action === "approve") {
-    return "Anfrage freigegeben";
+function actionDetail(action, note) {
+  const base =
+    action === "approve"
+      ? "Anfrage freigegeben"
+      : action === "reject"
+        ? "Anfrage abgelehnt"
+        : "Anfrage wieder auf offen gesetzt";
+
+  return note ? `${base}: ${note}` : base;
+}
+
+function normalizeDecisionNote(value) {
+  return String(value || "")
+    .trim()
+    .slice(0, 300);
+}
+
+function latestPastorNote(booking) {
+  const history = Array.isArray(booking.history) ? booking.history : [];
+  const entry = [...history].reverse().find((item) => item.actor === "Pastor" && item.detail.includes(":"));
+
+  if (!entry) {
+    return "";
   }
 
-  if (action === "reject") {
-    return "Anfrage abgelehnt";
-  }
-
-  return "Anfrage wieder auf offen gesetzt";
+  return `Hinweis vom Pastor: ${entry.detail.split(":").slice(1).join(":").trim()}`;
 }
 
 async function startServer() {

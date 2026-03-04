@@ -113,7 +113,7 @@
               <p class="section-label">Pastor</p>
               <h2>Freigaben</h2>
             </div>
-            <p class="muted">Demo-Zugangscode standardmäßig: <code>gemeinde123</code></p>
+            <p id="pastor-code-hint" class="muted">Pastor-Code aus der Server-Konfiguration verwenden.</p>
           </div>
 
           <div class="approval-login">
@@ -124,6 +124,10 @@
             <button id="load-approvals" type="button">Anfragen laden</button>
             <button id="refresh-approvals" type="button" class="secondary">Aktualisieren</button>
           </div>
+          <label>
+            Suche
+            <input id="pastor-search" type="search" placeholder="Name, Raum, Kontakt oder Zweck suchen" />
+          </label>
 
           <div class="share-box" data-private-only>
             <p class="section-label">Teilen</p>
