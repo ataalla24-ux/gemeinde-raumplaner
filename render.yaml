@@ -27,7 +27,7 @@ services:
         value: "false"
       - key: DATA_DIR
         value: /var/data/gemeinde-raumplaner
-    disks:
-      - name: gemeinde-raumplaner-data
-        mountPath: /var/data
-        sizeGB: 1
+    disk:
+      name: gemeinde-raumplaner-data
+      mountPath: /var/data
+      sizeGB: 1
