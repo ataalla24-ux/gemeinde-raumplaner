@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { randomUUID } = require("crypto");
 const nodemailer = require("nodemailer");
+const { createStorage } = require("./storage");
 
 const PORT = process.env.PORT || 3000;
 const PASTOR_CODE = process.env.PASTOR_CODE || "gemeinde123";
@@ -13,10 +14,17 @@ const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_SECURE = process.env.SMTP_SECURE === "true";
+const DATABASE_URL = process.env.DATABASE_URL || "";
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const BOOKINGS_FILE = path.join(DATA_DIR, "bookings.json");
 const OUTBOX_FILE = path.join(DATA_DIR, "outbox.log");
 const PUBLIC_DIR = path.join(__dirname, "public");
+const storage = createStorage({
+  dataDir: DATA_DIR,
+  bookingsFile: BOOKINGS_FILE,
+  outboxFile: OUTBOX_FILE,
+  databaseUrl: DATABASE_URL
+});
 
 const rooms = [
   {
@@ -118,9 +126,14 @@ const blockedSlots = [
   }
 ];
 
-ensureDataFiles();
+let storageReadyPromise = null;
 
 const server = http.createServer(async (req, res) => {
+  await handleRequest(req, res);
+});
+
+async function handleRequest(req, res) {
+  await ensureStorageReady();
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname.startsWith("/api/")) {
@@ -138,24 +151,6 @@ const server = http.createServer(async (req, res) => {
   }
 
   serveStatic(req, res, url);
-});
-
-server.listen(PORT, () => {
-  console.log(`Gemeinde-Raumplaner läuft auf http://localhost:${PORT}`);
-});
-
-function ensureDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-
-  if (!fs.existsSync(BOOKINGS_FILE)) {
-    fs.writeFileSync(BOOKINGS_FILE, "[]\n", "utf8");
-  }
-
-  if (!fs.existsSync(OUTBOX_FILE)) {
-    fs.writeFileSync(OUTBOX_FILE, "", "utf8");
-  }
 }
 
 async function handleApi(req, res, url) {
@@ -168,7 +163,7 @@ async function handleApi(req, res, url) {
     const requiresPastorCode = url.searchParams.get("view") === "pastor";
     assertPastorAccess(req, requiresPastorCode);
 
-    const bookings = readBookings().sort((a, b) => {
+    const bookings = (await storage.listBookings()).sort((a, b) => {
       return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
     });
 
@@ -182,7 +177,7 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/bookings") {
     const body = await parseJsonBody(req);
     const validated = validateBookingRequest(body);
-    const bookings = readBookings();
+    const bookings = await storage.listBookings();
     const series = buildSeries(validated);
 
     for (const occurrence of series) {
@@ -210,8 +205,7 @@ async function handleApi(req, res, url) {
       };
     });
 
-    bookings.push(...newBookings);
-    writeBookings(bookings);
+    await storage.appendBookings(newBookings);
     await notifyPastorAboutRequest(newBookings);
     sendJson(res, 201, { booking: newBookings[0], bookings: newBookings, createdCount: newBookings.length });
     return;
@@ -289,14 +283,6 @@ function getContentType(filePath) {
   };
 
   return contentTypes[extension] || "application/octet-stream";
-}
-
-function readBookings() {
-  return JSON.parse(fs.readFileSync(BOOKINGS_FILE, "utf8"));
-}
-
-function writeBookings(bookings) {
-  fs.writeFileSync(BOOKINGS_FILE, `${JSON.stringify(bookings, null, 2)}\n`, "utf8");
 }
 
 function validateBookingRequest(payload) {
@@ -574,7 +560,7 @@ function assertPastorAccess(req, required) {
 }
 
 async function decideBookings({ bookingId, recurrenceGroupId, action }) {
-  const bookings = readBookings();
+  const bookings = await storage.listBookings();
   const targetBookings = recurrenceGroupId
     ? bookings.filter((entry) => entry.recurrenceGroupId === recurrenceGroupId && entry.status === "pending")
     : bookings.filter((entry) => entry.id === bookingId);
@@ -604,7 +590,7 @@ async function decideBookings({ bookingId, recurrenceGroupId, action }) {
     );
   });
 
-  writeBookings(bookings);
+  await storage.updateBookings(targetBookings);
   await Promise.all(targetBookings.map((entry) => notifyRequester(entry, action)));
 
   return {
@@ -694,17 +680,37 @@ async function sendNotification({ to, subject, text }) {
     }
   }
 
-  const logEntry = [
-    `--- ${new Date().toISOString()} ---`,
-    `TO: ${to}`,
-    `SUBJECT: ${subject}`,
-    text,
-    ""
-  ].join("\n");
-  fs.appendFileSync(OUTBOX_FILE, `${logEntry}\n`, "utf8");
+  await storage.logNotification({ to, subject, text });
 }
 
 function getRoomName(roomId) {
   const room = rooms.find((entry) => entry.id === roomId);
   return room ? room.name : roomId;
 }
+
+async function startServer() {
+  await ensureStorageReady();
+  server.listen(PORT, () => {
+    console.log(`Gemeinde-Raumplaner läuft auf http://localhost:${PORT}`);
+  });
+}
+
+async function ensureStorageReady() {
+  if (!storageReadyPromise) {
+    storageReadyPromise = storage.init();
+  }
+
+  await storageReadyPromise;
+}
+
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error("Serverstart fehlgeschlagen.", error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  handleRequest,
+  startServer
+};

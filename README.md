@@ -31,7 +31,8 @@ PASTOR_CODE=mein-sicherer-code npm start
 
 ## Hinweise
 
-- Die Daten werden lokal in `data/bookings.json` gespeichert.
+- Ohne `DATABASE_URL` speichert die App lokal in `data/bookings.json`.
+- Mit `DATABASE_URL` nutzt die App PostgreSQL und ist fuer kostenlose Hosting-Kombinationen deutlich besser geeignet.
 - Diese Version hat bewusst nur eine einfache Demo-Authentifizierung.
 - E-Mails gehen ohne SMTP vorerst in `data/outbox.log`.
 - Die App ist als installierbare Web-App vorbereitet (`manifest.webmanifest` und Service Worker).
@@ -47,6 +48,18 @@ Wichtig:
 - Ohne persistenten Speicher gehen `bookings.json` und `outbox.log` bei Neustarts verloren.
 - Darum nutzt die Render-Konfiguration `DATA_DIR=/var/data/gemeinde-raumplaner` auf einem gemounteten Disk-Volume.
 - Beispielwerte fuer Umgebungsvariablen stehen in [.env.example](/Users/Stefan/Documents/New project/.env.example).
+
+Kostenlos sinnvoller:
+
+1. Vercel fuer App und API
+2. Supabase Postgres als Datenbank
+
+Dann `DATABASE_URL` in der Hosting-Plattform setzen und keinen Dateispeicher mehr verwenden.
+
+Vercel-Hinweis:
+
+- Fuer Vercel ist jetzt [vercel.json](/Users/Stefan/Documents/New project/vercel.json) vorhanden.
+- Die gleiche App-Logik laeuft lokal ueber [server.js](/Users/Stefan/Documents/New project/server.js) und online ueber [api/index.js](/Users/Stefan/Documents/New project/api/index.js).
 
 Render-Ablauf:
 
