@@ -16,6 +16,7 @@ const calendarLegend = document.getElementById("calendar-legend");
 const pastorSummary = document.getElementById("pastor-summary");
 const pastorCodeInput = document.getElementById("pastor-code");
 const loadApprovalsButton = document.getElementById("load-approvals");
+const refreshApprovalsButton = document.getElementById("refresh-approvals");
 const previousWeekButton = document.getElementById("previous-week");
 const nextWeekButton = document.getElementById("next-week");
 const weekViewButton = document.getElementById("week-view");
@@ -49,7 +50,9 @@ async function bootstrap() {
 }
 
 async function loadMeta() {
-  const response = await fetch("/api/rooms");
+  const response = await fetch("/api/rooms", {
+    cache: "no-store"
+  });
   const data = await response.json();
 
   state.settings = data.settings || {};
@@ -69,7 +72,9 @@ async function loadMeta() {
 }
 
 async function loadApprovedBookings() {
-  const response = await fetch("/api/bookings");
+  const response = await fetch("/api/bookings", {
+    cache: "no-store"
+  });
   const data = await response.json();
   state.approvedBookings = data.bookings || [];
   state.blockedSlots = data.blockedSlots || state.blockedSlots;
@@ -88,6 +93,7 @@ async function loadPastorBookings() {
 
   try {
     const response = await fetch("/api/bookings?view=pastor", {
+      cache: "no-store",
       headers: {
         "x-pastor-code": code
       }
@@ -153,6 +159,7 @@ bookingForm.addEventListener("submit", async (event) => {
 });
 
 loadApprovalsButton.addEventListener("click", loadPastorBookings);
+refreshApprovalsButton.addEventListener("click", refreshPastorData);
 roomSelect.addEventListener("change", renderRoomDetails);
 weekViewButton.addEventListener("click", () => setCalendarView("week"));
 monthViewButton.addEventListener("click", () => setCalendarView("month"));
@@ -182,6 +189,16 @@ function shiftCalendar(direction) {
   state.currentDate = date;
   syncPublicUrl();
   renderCalendar();
+}
+
+async function refreshPastorData() {
+  showMessage(approvalMessage, "Aktualisiere Daten vom Server...");
+  await loadApprovedBookings();
+  if (pastorCodeInput.value.trim()) {
+    await loadPastorBookings();
+    return;
+  }
+  showMessage(approvalMessage, "Kalender wurde aktualisiert.");
 }
 
 function renderRoomDetails() {
