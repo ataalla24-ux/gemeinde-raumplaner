@@ -350,8 +350,8 @@ function renderPastorArea() {
 
   pastorSummary.innerHTML = `
     <span>${pending.length} offen</span>
-    <span>${history.filter((booking) => booking.status === "approved").length} freigegeben</span>
-    <span>${history.filter((booking) => booking.status === "rejected").length} abgelehnt</span>
+    <span>${history.filter((booking) => booking.status === "approved").length} im Archiv freigegeben</span>
+    <span>${history.filter((booking) => booking.status === "rejected").length} im Archiv abgelehnt</span>
     <span>E-Mail: ${state.settings.emailConfigured ? "SMTP aktiv" : "Outbox-Datei aktiv"}</span>
   `;
 
@@ -480,15 +480,54 @@ async function runPastorAction(url, code, action) {
       throw new Error(data.error || "Aktion konnte nicht durchgeführt werden.");
     }
 
+    applyPastorActionLocally(url, action);
+    renderPastorArea();
     showMessage(
       approvalMessage,
-      action === "approve" ? "Anfrage wurde freigegeben." : "Anfrage wurde abgelehnt."
+      action === "approve"
+        ? "Anfrage wurde freigegeben und direkt ins Archiv verschoben."
+        : "Anfrage wurde abgelehnt und direkt ins Archiv verschoben."
     );
     await loadApprovedBookings();
     await loadPastorBookings();
   } catch (error) {
     showMessage(approvalMessage, error.message, true);
   }
+}
+
+function applyPastorActionLocally(url, action) {
+  const targetStatus = action === "approve" ? "approved" : "rejected";
+  const decidedAt = new Date().toISOString();
+  const detail = action === "approve" ? "Anfrage freigegeben" : "Anfrage abgelehnt";
+  const match = url.match(/^\/api\/(bookings|series)\/([^/]+)\//);
+
+  if (!match) {
+    return;
+  }
+
+  const [, type, targetId] = match;
+  state.pastorBookings = state.pastorBookings.map((booking) => {
+    const isMatch =
+      type === "bookings" ? booking.id === targetId : booking.recurrenceGroupId === targetId;
+
+    if (!isMatch || booking.status !== "pending") {
+      return booking;
+    }
+
+    const history = Array.isArray(booking.history) ? [...booking.history] : [];
+    history.push({
+      createdAt: decidedAt,
+      actor: "Pastor",
+      detail
+    });
+
+    return {
+      ...booking,
+      status: targetStatus,
+      decidedAt,
+      history
+    };
+  });
 }
 
 function formatDate(value) {
