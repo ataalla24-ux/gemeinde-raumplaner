@@ -133,7 +133,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function handleRequest(req, res) {
-  await ensureStorageReady();
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname.startsWith("/api/")) {
@@ -158,6 +157,8 @@ async function handleApi(req, res, url) {
     sendJson(res, 200, buildPublicMeta());
     return;
   }
+
+  await ensureStorageReady();
 
   if (req.method === "GET" && url.pathname === "/api/bookings") {
     const requiresPastorCode = url.searchParams.get("view") === "pastor";
