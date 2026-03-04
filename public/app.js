@@ -440,11 +440,21 @@ function renderHistoryCards(container, bookings) {
             <span class="status ${booking.status}">${statusLabel(booking.status)}</span>
           </div>
           <p><strong>Zeit:</strong> ${formatDate(booking.startAt)} bis ${formatDate(booking.endAt)}</p>
+          <div class="card-actions">
+            ${
+              booking.status === "approved"
+                ? `<button type="button" class="secondary" data-action="reject" data-id="${booking.id}">Doch ablehnen</button>`
+                : `<button type="button" data-action="approve" data-id="${booking.id}">Doch freigeben</button>`
+            }
+            <button type="button" class="secondary" data-action="reopen" data-id="${booking.id}">Als offen markieren</button>
+          </div>
           <ul class="inline-list history-list">${historyItems}</ul>
         </article>
       `;
     })
     .join("");
+
+  bindPastorActions(container);
 }
 
 function bindPastorActions(container) {
@@ -484,9 +494,7 @@ async function runPastorAction(url, code, action) {
     renderPastorArea();
     showMessage(
       approvalMessage,
-      action === "approve"
-        ? "Anfrage wurde freigegeben und direkt ins Archiv verschoben."
-        : "Anfrage wurde abgelehnt und direkt ins Archiv verschoben."
+      pastorActionMessage(action)
     );
     await loadApprovedBookings();
     await loadPastorBookings();
@@ -496,9 +504,14 @@ async function runPastorAction(url, code, action) {
 }
 
 function applyPastorActionLocally(url, action) {
-  const targetStatus = action === "approve" ? "approved" : "rejected";
+  const targetStatus = pastorTargetStatus(action);
   const decidedAt = new Date().toISOString();
-  const detail = action === "approve" ? "Anfrage freigegeben" : "Anfrage abgelehnt";
+  const detail =
+    action === "approve"
+      ? "Anfrage freigegeben"
+      : action === "reject"
+        ? "Anfrage abgelehnt"
+        : "Anfrage wieder auf offen gesetzt";
   const match = url.match(/^\/api\/(bookings|series)\/([^/]+)\//);
 
   if (!match) {
@@ -524,10 +537,34 @@ function applyPastorActionLocally(url, action) {
     return {
       ...booking,
       status: targetStatus,
-      decidedAt,
+      decidedAt: action === "reopen" ? undefined : decidedAt,
       history
     };
   });
+}
+
+function pastorTargetStatus(action) {
+  if (action === "approve") {
+    return "approved";
+  }
+
+  if (action === "reject") {
+    return "rejected";
+  }
+
+  return "pending";
+}
+
+function pastorActionMessage(action) {
+  if (action === "approve") {
+    return "Anfrage wurde freigegeben und direkt ins Archiv verschoben.";
+  }
+
+  if (action === "reject") {
+    return "Anfrage wurde abgelehnt und direkt ins Archiv verschoben.";
+  }
+
+  return "Anfrage wurde wieder auf offen gesetzt.";
 }
 
 function formatDate(value) {

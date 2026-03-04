@@ -228,6 +228,14 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && /^\/api\/bookings\/[^/]+\/reopen$/.test(url.pathname)) {
+    assertPastorAccess(req, true);
+    const bookingId = url.pathname.split("/")[3];
+    const result = await decideBookings({ bookingId, action: "reopen" });
+    sendJson(res, 200, result);
+    return;
+  }
+
   if (req.method === "POST" && /^\/api\/series\/[^/]+\/approve$/.test(url.pathname)) {
     assertPastorAccess(req, true);
     const recurrenceGroupId = url.pathname.split("/")[3];
@@ -240,6 +248,14 @@ async function handleApi(req, res, url) {
     assertPastorAccess(req, true);
     const recurrenceGroupId = url.pathname.split("/")[3];
     const result = await decideBookings({ recurrenceGroupId, action: "reject" });
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === "POST" && /^\/api\/series\/[^/]+\/reopen$/.test(url.pathname)) {
+    assertPastorAccess(req, true);
+    const recurrenceGroupId = url.pathname.split("/")[3];
+    const result = await decideBookings({ recurrenceGroupId, action: "reopen" });
     sendJson(res, 200, result);
     return;
   }
@@ -563,15 +579,15 @@ function assertPastorAccess(req, required) {
 async function decideBookings({ bookingId, recurrenceGroupId, action }) {
   const bookings = await storage.listBookings();
   const targetBookings = recurrenceGroupId
-    ? bookings.filter((entry) => entry.recurrenceGroupId === recurrenceGroupId && entry.status === "pending")
+    ? bookings.filter((entry) => entry.recurrenceGroupId === recurrenceGroupId)
     : bookings.filter((entry) => entry.id === bookingId);
 
   if (!targetBookings.length) {
     throw createHttpError(404, "Anfrage nicht gefunden.");
   }
 
-  if (targetBookings.some((entry) => entry.status !== "pending")) {
-    throw createHttpError(400, "Mindestens eine Anfrage wurde bereits bearbeitet.");
+  if (targetBookings.every((entry) => entry.status === mapStatusFromAction(action))) {
+    throw createHttpError(400, "Die Anfrage hat bereits diesen Status.");
   }
 
   if (action === "approve") {
@@ -580,13 +596,13 @@ async function decideBookings({ bookingId, recurrenceGroupId, action }) {
 
   const decidedAt = new Date().toISOString();
   targetBookings.forEach((entry) => {
-    entry.status = action === "approve" ? "approved" : "rejected";
-    entry.decidedAt = decidedAt;
+    entry.status = mapStatusFromAction(action);
+    entry.decidedAt = action === "reopen" ? undefined : decidedAt;
     entry.history = entry.history || [];
     entry.history.push(
       createHistoryEntry(action, {
         actor: "Pastor",
-        detail: action === "approve" ? "Anfrage freigegeben" : "Anfrage abgelehnt"
+        detail: actionDetail(action)
       })
     );
   });
@@ -639,13 +655,17 @@ async function notifyRequester(booking, action) {
   const subject =
     action === "approve"
       ? `Ihre Anfrage wurde freigegeben: ${booking.purpose}`
-      : `Ihre Anfrage wurde abgelehnt: ${booking.purpose}`;
+      : action === "reject"
+        ? `Ihre Anfrage wurde abgelehnt: ${booking.purpose}`
+        : `Ihre Anfrage wird erneut geprüft: ${booking.purpose}`;
   const text = [
     `Hallo ${booking.requestedBy},`,
     "",
     action === "approve"
       ? `Ihre Anfrage für ${getRoomName(booking.roomId)} wurde freigegeben.`
-      : `Ihre Anfrage für ${getRoomName(booking.roomId)} wurde abgelehnt.`,
+      : action === "reject"
+        ? `Ihre Anfrage für ${getRoomName(booking.roomId)} wurde abgelehnt.`
+        : `Ihre Anfrage für ${getRoomName(booking.roomId)} wurde wieder auf offen gesetzt und wird erneut geprüft.`,
     `Termin: ${new Date(booking.startAt).toLocaleString("de-AT")} bis ${new Date(booking.endAt).toLocaleString("de-AT")}`
   ].join("\n");
 
@@ -687,6 +707,30 @@ async function sendNotification({ to, subject, text }) {
 function getRoomName(roomId) {
   const room = rooms.find((entry) => entry.id === roomId);
   return room ? room.name : roomId;
+}
+
+function mapStatusFromAction(action) {
+  if (action === "approve") {
+    return "approved";
+  }
+
+  if (action === "reject") {
+    return "rejected";
+  }
+
+  return "pending";
+}
+
+function actionDetail(action) {
+  if (action === "approve") {
+    return "Anfrage freigegeben";
+  }
+
+  if (action === "reject") {
+    return "Anfrage abgelehnt";
+  }
+
+  return "Anfrage wieder auf offen gesetzt";
 }
 
 async function startServer() {
