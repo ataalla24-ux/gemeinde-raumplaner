@@ -144,7 +144,7 @@ async function handleRequest(req, res) {
         return;
       }
       console.error(error);
-      sendJson(res, 500, { error: "Interner Serverfehler." });
+      sendJson(res, 500, { error: error && error.message ? error.message : "Interner Serverfehler." });
     }
     return;
   }
