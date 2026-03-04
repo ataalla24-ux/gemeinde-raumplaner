@@ -175,6 +175,15 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/notifications") {
+    const requiresPastorCode = url.searchParams.get("view") === "pastor";
+    assertPastorAccess(req, requiresPastorCode);
+
+    const notifications = requiresPastorCode ? await storage.listNotificationLogs() : [];
+    sendJson(res, 200, { notifications });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/bookings") {
     const body = await parseJsonBody(req);
     const validated = validateBookingRequest(body);
@@ -275,6 +284,17 @@ async function handleApi(req, res, url) {
       note: normalizeDecisionNote(body.note)
     });
     sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/notifications/test") {
+    assertPastorAccess(req, true);
+    const result = await sendNotification({
+      to: PASTOR_EMAIL,
+      subject: "Test-E-Mail Gemeinde Raumplaner",
+      text: "Diese Test-E-Mail wurde aus dem Pastor-Bereich ausgelöst."
+    });
+    sendJson(res, 200, { result });
     return;
   }
 
@@ -715,13 +735,29 @@ async function sendNotification({ to, subject, text }) {
         subject,
         text
       });
-      return;
+      await storage.logNotification({
+        to,
+        subject,
+        text,
+        transport: "smtp"
+      });
+      return { transport: "smtp", delivered: true };
     } catch (error) {
+      const errorMessage = error && error.message ? error.message : "SMTP-Versand fehlgeschlagen.";
       console.error("E-Mail-Versand fehlgeschlagen, schreibe in Outbox.", error);
+      await storage.logNotification({
+        to,
+        subject,
+        text,
+        transport: "fallback",
+        errorMessage
+      });
+      return { transport: "fallback", delivered: false, error: errorMessage };
     }
   }
 
-  await storage.logNotification({ to, subject, text });
+  await storage.logNotification({ to, subject, text, transport: "fallback" });
+  return { transport: "fallback", delivered: false, error: "SMTP ist nicht vollständig konfiguriert." };
 }
 
 function getRoomName(roomId) {

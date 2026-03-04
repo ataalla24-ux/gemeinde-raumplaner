@@ -5,8 +5,10 @@ const bookingForm = document.getElementById("booking-form");
 const formMessage = document.getElementById("form-message");
 const approvalMessage = document.getElementById("approval-message");
 const shareMessage = document.getElementById("share-message");
+const mailMessage = document.getElementById("mail-message");
 const approvalList = document.getElementById("approval-list");
 const historyList = document.getElementById("history-list");
+const mailLogList = document.getElementById("mail-log-list");
 const scheduleList = document.getElementById("schedule-list");
 const calendarGrid = document.getElementById("calendar-grid");
 const calendarRange = document.getElementById("calendar-range");
@@ -19,6 +21,7 @@ const pastorCodeHint = document.getElementById("pastor-code-hint");
 const pastorSearchInput = document.getElementById("pastor-search");
 const loadApprovalsButton = document.getElementById("load-approvals");
 const refreshApprovalsButton = document.getElementById("refresh-approvals");
+const sendTestEmailButton = document.getElementById("send-test-email");
 const previousWeekButton = document.getElementById("previous-week");
 const nextWeekButton = document.getElementById("next-week");
 const weekViewButton = document.getElementById("week-view");
@@ -33,6 +36,7 @@ const state = {
   approvedBookings: [],
   blockedSlots: [],
   pastorBookings: [],
+  notificationLogs: [],
   currentDate: getInitialDate(),
   calendarView: getInitialView(),
   publicMode: new URLSearchParams(window.location.search).get("public") === "1",
@@ -110,6 +114,7 @@ async function loadPastorBookings() {
     }
 
     state.pastorBookings = data.bookings || [];
+    await loadNotificationLogs(code);
     renderPastorArea();
     showMessage(
       approvalMessage,
@@ -166,6 +171,7 @@ bookingForm.addEventListener("submit", async (event) => {
 
 loadApprovalsButton.addEventListener("click", loadPastorBookings);
 refreshApprovalsButton.addEventListener("click", refreshPastorData);
+sendTestEmailButton.addEventListener("click", sendTestEmail);
 pastorSearchInput.addEventListener("input", () => {
   state.pastorFilter = pastorSearchInput.value.trim().toLowerCase();
   renderPastorArea();
@@ -209,6 +215,53 @@ async function refreshPastorData() {
     return;
   }
   showMessage(approvalMessage, "Kalender wurde aktualisiert.");
+}
+
+async function loadNotificationLogs(code) {
+  const response = await fetch("/api/notifications?view=pastor", {
+    cache: "no-store",
+    headers: {
+      "x-pastor-code": code
+    }
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Mail-Protokoll konnte nicht geladen werden.");
+  }
+  state.notificationLogs = data.notifications || [];
+  renderMailLog();
+}
+
+async function sendTestEmail() {
+  const code = pastorCodeInput.value.trim();
+  if (!code) {
+    showMessage(mailMessage, "Bitte zuerst den Pastor-Code eingeben.", true);
+    return;
+  }
+
+  showMessage(mailMessage, "Test-E-Mail wird gesendet...");
+
+  try {
+    const response = await fetch("/api/notifications/test", {
+      method: "POST",
+      headers: {
+        "x-pastor-code": code
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Test-E-Mail konnte nicht gesendet werden.");
+    }
+
+    const note =
+      data.result && data.result.delivered
+        ? "Test-E-Mail wurde per SMTP versendet."
+        : `SMTP hat nicht zugestellt. Fallback aktiv: ${data.result?.error || "unbekannter Fehler"}`;
+    showMessage(mailMessage, note, !(data.result && data.result.delivered));
+    await loadNotificationLogs(code);
+  } catch (error) {
+    showMessage(mailMessage, error.message, true);
+  }
 }
 
 function renderRoomDetails() {
@@ -385,6 +438,39 @@ function renderPastorArea() {
 
   renderPastorCards(approvalList, pending, true);
   renderHistoryCards(historyList, history);
+  renderMailLog();
+}
+
+function renderMailLog() {
+  if (!mailLogList) {
+    return;
+  }
+
+  if (!state.notificationLogs.length) {
+    mailLogList.innerHTML = `<div class="card"><p>Noch kein Mail-Protokoll vorhanden.</p></div>`;
+    return;
+  }
+
+  mailLogList.innerHTML = state.notificationLogs
+    .map(
+      (entry) => `
+        <article class="card mail-log-card">
+          <div class="card-top">
+            <div>
+              <p class="section-label">${escapeHtml(entry.transport === "smtp" ? "SMTP" : "Fallback")}</p>
+              <h3>${escapeHtml(entry.subject)}</h3>
+            </div>
+            <span class="status ${entry.transport === "smtp" ? "approved" : "rejected"}">
+              ${entry.transport === "smtp" ? "Gesendet" : "Nicht zugestellt"}
+            </span>
+          </div>
+          <p><strong>An:</strong> ${escapeHtml(entry.recipient)}</p>
+          <p><strong>Zeit:</strong> ${formatDate(entry.createdAt)}</p>
+          ${entry.errorMessage ? `<p><strong>Fehler:</strong> ${escapeHtml(entry.errorMessage)}</p>` : ""}
+        </article>
+      `
+    )
+    .join("");
 }
 
 function renderPastorCards(container, bookings, includeActions) {

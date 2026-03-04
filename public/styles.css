@@ -119,6 +119,10 @@ h1 {
   margin-bottom: 1.25rem;
 }
 
+.compact-heading {
+  margin-bottom: 0.75rem;
+}
+
 .muted {
   color: var(--muted);
   max-width: 30ch;
@@ -313,6 +317,10 @@ button:disabled {
 
 .message.success {
   color: var(--success);
+}
+
+.mail-log-card strong {
+  font-weight: 600;
 }
 
 .calendar-toolbar {

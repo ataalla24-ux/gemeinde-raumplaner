@@ -52,12 +52,43 @@ class FileStorage {
   async logNotification({ to, subject, text }) {
     const logEntry = [
       `--- ${new Date().toISOString()} ---`,
+      `TRANSPORT: fallback`,
       `TO: ${to}`,
       `SUBJECT: ${subject}`,
       text,
       ""
     ].join("\n");
     fs.appendFileSync(this.outboxFile, `${logEntry}\n`, "utf8");
+  }
+
+  async listNotificationLogs() {
+    const raw = fs.readFileSync(this.outboxFile, "utf8").trim();
+    if (!raw) {
+      return [];
+    }
+
+    return raw
+      .split(/^--- /m)
+      .filter(Boolean)
+      .map((chunk) => {
+        const lines = chunk.trim().split("\n");
+        const createdAt = lines[0]?.replace(/\s*---$/, "").trim();
+        const transport = lines.find((line) => line.startsWith("TRANSPORT:"))?.replace("TRANSPORT:", "").trim() || "fallback";
+        const recipient = lines.find((line) => line.startsWith("TO:"))?.replace("TO:", "").trim() || "";
+        const subject = lines.find((line) => line.startsWith("SUBJECT:"))?.replace("SUBJECT:", "").trim() || "";
+        const body = lines.slice(3).join("\n").trim();
+
+        return {
+          id: `${createdAt}-${recipient}-${subject}`,
+          createdAt,
+          transport,
+          recipient,
+          subject,
+          body
+        };
+      })
+      .reverse()
+      .slice(0, 20);
   }
 
   writeBookings(bookings) {
@@ -105,8 +136,20 @@ class PostgresStorage {
         recipient TEXT NOT NULL,
         subject TEXT NOT NULL,
         body TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL
+        created_at TIMESTAMPTZ NOT NULL,
+        transport TEXT NOT NULL DEFAULT 'fallback',
+        error_message TEXT
       );
+    `);
+
+    await this.pool.query(`
+      ALTER TABLE notification_logs
+      ADD COLUMN IF NOT EXISTS transport TEXT NOT NULL DEFAULT 'fallback'
+    `);
+
+    await this.pool.query(`
+      ALTER TABLE notification_logs
+      ADD COLUMN IF NOT EXISTS error_message TEXT
     `);
   }
 
@@ -256,14 +299,35 @@ class PostgresStorage {
     }
   }
 
-  async logNotification({ to, subject, text }) {
+  async logNotification({ to, subject, text, transport = "fallback", errorMessage = "" }) {
     await this.pool.query(
       `
-        INSERT INTO notification_logs (id, recipient, subject, body, created_at)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO notification_logs (id, recipient, subject, body, created_at, transport, error_message)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
-      [randomUUID(), to, subject, text, new Date().toISOString()]
+      [randomUUID(), to, subject, text, new Date().toISOString(), transport, errorMessage]
     );
+  }
+
+  async listNotificationLogs() {
+    const result = await this.pool.query(
+      `
+        SELECT id, recipient, subject, body, created_at, transport, error_message
+        FROM notification_logs
+        ORDER BY created_at DESC
+        LIMIT 20
+      `
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      recipient: row.recipient,
+      subject: row.subject,
+      body: row.body,
+      createdAt: toIsoString(row.created_at),
+      transport: row.transport || "fallback",
+      errorMessage: row.error_message || ""
+    }));
   }
 }
 
