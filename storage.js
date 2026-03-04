@@ -67,13 +67,18 @@ class FileStorage {
 
 class PostgresStorage {
   constructor(databaseUrl) {
-    this.pool = new Pool({
-      connectionString: databaseUrl,
-      ssl: shouldUseSsl(databaseUrl) ? { rejectUnauthorized: false } : false
-    });
+    this.databaseUrl = databaseUrl;
+    this.pool = null;
   }
 
   async init() {
+    if (!this.pool) {
+      this.pool = new Pool({
+        connectionString: this.databaseUrl,
+        ssl: shouldUseSsl(this.databaseUrl) ? { rejectUnauthorized: false } : false
+      });
+    }
+
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS bookings (
         id TEXT PRIMARY KEY,
