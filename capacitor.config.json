@@ -1,0 +1,10 @@
+{
+  "appId": "com.stefan.gemeinderaumplaner",
+  "appName": "Gemeinde Raumplaner",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://deine-domain-hier-eintragen.de",
+    "cleartext": false
+  }
+}

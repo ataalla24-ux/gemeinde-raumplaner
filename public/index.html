@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemeinde Raumplaner</title>
+    <meta name="theme-color" content="#8e5b2b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Raumplaner" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="public-banner" class="public-banner hidden">
+      Öffentliche Buchungsansicht. Hier kann der Kalender gesehen und direkt eine Anfrage gestellt werden.
+    </div>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Gemeinde Organisation</p>
+          <h1>Räume anfragen, Zeiten verwalten, Freigaben sauber abbilden.</h1>
+          <p class="hero-copy">
+            Mitglieder stellen Anfragen für Gemeinderäume. Der Pastor prüft sie
+            und gibt passende Termine frei oder lehnt sie ab.
+          </p>
+        </div>
+        <div class="hero-card">
+          <p class="hero-card-label">Ablauf</p>
+          <ol>
+            <li>Raum und Zeit auswählen</li>
+            <li>Anfrage absenden</li>
+            <li>Pastor prüft und entscheidet</li>
+          </ol>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel" data-private-only>
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">Mitglieder</p>
+              <h2>Neue Anfrage</h2>
+            </div>
+            <p class="muted">Raumregeln, Sperrzeiten und Wiederholungen werden direkt berücksichtigt.</p>
+          </div>
+
+          <form id="booking-form" class="booking-form">
+            <label>
+              Name
+              <input id="requestedBy" name="requestedBy" type="text" required />
+            </label>
+
+            <label>
+              E-Mail oder Telefon
+              <input id="email" name="email" type="text" required />
+            </label>
+
+            <label>
+              Raum
+              <select id="roomId" name="roomId" required></select>
+            </label>
+
+            <label>
+              Wiederholung
+              <select id="recurrenceType" name="recurrenceType">
+                <option value="none">Keine</option>
+                <option value="weekly">Wöchentlich</option>
+                <option value="monthly">Monatlich</option>
+              </select>
+            </label>
+
+            <label>
+              Start
+              <input id="startAt" name="startAt" type="datetime-local" required />
+            </label>
+
+            <label>
+              Ende
+              <input id="endAt" name="endAt" type="datetime-local" required />
+            </label>
+
+            <label>
+              Anzahl Termine
+              <input id="recurrenceCount" name="recurrenceCount" type="number" min="1" max="24" value="1" />
+            </label>
+
+            <label class="full-width">
+              Zweck der Nutzung
+              <textarea id="purpose" name="purpose" rows="4" required></textarea>
+            </label>
+
+            <button type="submit">Anfrage absenden</button>
+          </form>
+
+          <p id="form-message" class="message" aria-live="polite"></p>
+          <div class="info-stack">
+            <div class="info-card">
+              <h3>Raumregeln</h3>
+              <div id="room-rules"></div>
+            </div>
+            <div class="info-card">
+              <h3>Sperrzeiten</h3>
+              <div id="blocked-slots"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-label">Pastor</p>
+              <h2>Freigaben</h2>
+            </div>
+            <p class="muted">Demo-Zugangscode standardmäßig: <code>gemeinde123</code></p>
+          </div>
+
+          <div class="approval-login">
+            <label>
+              Pastor-Code
+              <input id="pastor-code" type="password" placeholder="Code eingeben" />
+            </label>
+            <button id="load-approvals" type="button">Anfragen laden</button>
+          </div>
+
+          <div class="share-box" data-private-only>
+            <p class="section-label">Teilen</p>
+            <p class="share-copy">
+              Wenn dich jemand auf WhatsApp fragt, kannst du direkt den öffentlichen Kalender mit Buchungslink schicken.
+            </p>
+            <div class="card-actions">
+              <button id="share-whatsapp" type="button">Per WhatsApp teilen</button>
+              <button id="copy-share-link" type="button" class="secondary">Link kopieren</button>
+            </div>
+            <p id="share-message" class="message" aria-live="polite"></p>
+          </div>
+
+          <p id="approval-message" class="message" aria-live="polite"></p>
+          <div id="pastor-summary" class="summary-strip"></div>
+          <div class="pastor-sections">
+            <div>
+              <h3>Offene Anfragen</h3>
+              <div id="approval-list" class="cards"></div>
+            </div>
+            <div>
+              <h3>Verlauf</h3>
+              <div id="history-list" class="cards"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-label">Kalender</p>
+            <h2>Freigegebene Belegungen</h2>
+          </div>
+          <p class="muted">Mit Wochen- und Monatsansicht, Farblegende und Druckfunktion.</p>
+        </div>
+        <div class="calendar-toolbar">
+          <button id="previous-week" type="button" class="calendar-nav secondary">Vorige Woche</button>
+          <p id="calendar-range" class="calendar-range"></p>
+          <div class="calendar-actions">
+            <div class="segmented-control">
+              <button id="week-view" type="button" class="segmented active">Woche</button>
+              <button id="month-view" type="button" class="segmented">Monat</button>
+            </div>
+            <button id="print-calendar" type="button" class="secondary">Als PDF drucken</button>
+            <button id="next-week" type="button" class="calendar-nav">Nächste Woche</button>
+          </div>
+        </div>
+        <div id="calendar-legend" class="legend"></div>
+        <div id="calendar-grid" class="calendar-grid"></div>
+        <div id="schedule-list" class="cards schedule-cards"></div>
+      </section>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

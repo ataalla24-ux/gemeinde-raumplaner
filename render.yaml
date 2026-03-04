@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: gemeinde-raumplaner
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/rooms
+    envVars:
+      - key: NODE_VERSION
+        value: 25.6.1
+      - key: PASTOR_CODE
+        sync: false
+      - key: PASTOR_EMAIL
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_SECURE
+        value: "false"
+      - key: DATA_DIR
+        value: /var/data/gemeinde-raumplaner
+    disks:
+      - name: gemeinde-raumplaner-data
+        mountPath: /var/data
+        sizeGB: 1

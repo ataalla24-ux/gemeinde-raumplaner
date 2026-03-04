@@ -1,0 +1,17 @@
+{
+  "name": "Gemeinde Raumplaner",
+  "short_name": "Raumplaner",
+  "description": "Raumreservierung mit Pastor-Freigabe fuer Gemeinden.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5efe4",
+  "theme_color": "#8e5b2b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

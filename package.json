@@ -1,0 +1,19 @@
+{
+  "name": "gemeinde-raumplaner",
+  "version": "1.0.0",
+  "description": "Einfache Raumreservierung mit Pastor-Freigabe",
+  "private": true,
+  "dependencies": {
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
+    "nodemailer": "^7.0.3"
+  },
+  "scripts": {
+    "cap:add:ios": "npx cap add ios",
+    "cap:copy": "npx cap copy",
+    "cap:open:ios": "npx cap open ios",
+    "cap:sync": "npx cap sync",
+    "start": "node server.js"
+  }
+}
